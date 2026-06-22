@@ -111,26 +111,6 @@ Camera use cases:
 
 *[Open interactive diagram](docs/architecture.html)*
 
-```
-                    ┌──────────────────────┐
-                    │      Router/Gateway    │
-                    └────────┬──────────────┘
-                             │
-          ┌──────────────────┼──────────────────┐
-          │                  │                    │
-    ┌─────┴─────┐    ┌──────┴──────┐    ┌───────┴──────┐
-    │  HA Host   │    │  Hermes Host │    │ Other Devices│
-    │  (Docker)  │    │  (macOS)     │    │ Robot Vacuum │
-    │  Camera    │    │  pyatv       │    │ Smart Lights │
-    │  Sensors   │    │  hub-ctl     │    │ Door Lock    │
-    └─────┬─────┘    └──────┬──────┘    └──────────────┘
-          │                 │
-    ┌─────┴─────┐    ┌──────┴──────┐
-    │ HomePod   │    │ AirPort Exp │
-    │ (RAOP)    │    │ (RAOP Amp)  │
-    └───────────┘    └─────────────┘
-```
-
 ### Quick Start
 
 1. **Enable the HA toolset** in Hermes:
