@@ -10,6 +10,12 @@
 
 > **Note:** This project is designed to work with Hermes Agent, but the core CLI (`scripts/hub-ctl`) can be used standalone on any macOS system with access to your smart home devices.
 
+### Architecture
+
+![Home Hub Architecture](docs/architecture.svg)
+
+*[Open interactive diagram](docs/architecture.html)*
+
 ### Features
 
 - **Home Assistant integration** — Control lights, vacuum, locks, sensors, and cameras via HA's built-in Hermes toolset or REST API
@@ -104,12 +110,6 @@ Camera use cases:
 | Package delivered | Camera zone trigger | Broadcast "Package arrived at front door" + query snapshot |
 
 > **Tip:** All CRON examples require the Hermes cron system. See [Hermes Docs → Cron](https://hermes-agent.nousresearch.com/docs/features/scheduled-tasks) for detailed configuration.
-
-### Architecture
-
-![Home Hub Architecture](docs/architecture.svg)
-
-*[Open interactive diagram](docs/architecture.html)*
 
 ### Quick Start
 
