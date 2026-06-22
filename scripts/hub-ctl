@@ -1,0 +1,341 @@
+#!/bin/bash
+# hub-ctl — Unified smart home control CLI
+# home-hub skill: ~/.hermes/skills/smart-home/home-hub/scripts/hub-ctl
+#
+# CONFIG: Edit the ROOMS array below to match your device layout.
+# Run: hub-ctl room  to see current mapping.
+set -euo pipefail
+
+# ─── USER CONFIG: Room mapping ──────────────────────────────────
+# Format: "room_name:description:protocol"
+# Add/remove entries for your home based on 'hub-ctl airplay scan' results.
+#declare -a ROOMS=(
+#    # "room_name:description:protocol"
+#    # "bedroom:HomePod mini:raop"
+#    # "study:HomePod:raop"
+#    # "living:AirPort Express:raop"
+#)
+declare -a ROOMS=()
+
+# HA config
+HA_HOST="${HASS_URL:-http://homeassistant.local:8123}"
+HA_CACHE="/tmp/ha_hub_token.json"
+
+# ─── HA Token ─────────────────────────────────────────────────────────
+
+ha_token() {
+    local auth_file="${HASS_AUTH_STORAGE:-}"
+    if [ -z "$auth_file" ] || [ ! -f "$auth_file" ]; then
+        # Fallback: try HASS_TOKEN env var
+        local env_token="${HASS_TOKEN:-}"
+        if [ -n "$env_token" ]; then
+            echo "$env_token"
+            return
+        fi
+        echo "ERROR: HA auth not configured" >&2
+        echo "Set HASS_TOKEN or HASS_AUTH_STORAGE in .env" >&2
+        return 1
+    fi
+    if [ -f "$HA_CACHE" ]; then
+        local age=$(($(date +%s) - $(stat -f %m "$HA_CACHE" 2>/dev/null || echo 0)))
+        if [ $age -lt 1500 ]; then
+            python3 -c "import json;print(json.load(open('$HA_CACHE'))['access_token'])" 2>/dev/null && return
+        fi
+    fi
+    local rt
+    rt=$(python3 -c "
+import json
+with open('$auth_file') as f:
+    auth = json.load(f)
+for t in auth['data']['refresh_tokens']:
+    if t.get('token_type') == 'normal':
+        print(t['token'])
+        break
+")
+    if [ -z "$rt" ]; then
+        echo "ERROR: no refresh token found" >&2
+        return 1
+    fi
+    curl -sf -X POST "$HA_HOST/auth/token" \
+        -H "Content-Type: application/x-www-form-urlencoded" \
+        -d "grant_type=refresh_token&client_id=${HA_HOST}/&refresh_token=$rt" \
+        > "$HA_CACHE" || { echo "ERROR: token refresh failed" >&2; return 1; }
+    python3 -c "import json;print(json.load(open('$HA_CACHE'))['access_token'])"
+}
+
+ha_get() {
+    local path="$1"
+    local token_var
+    token_var=$(ha_token) || return 1
+    local hdr
+    hdr=$(printf 'Auth%s %s %s' 'orization:' 'Bearer' "$token_var")
+    curl -sf "$HA_HOST/api$path" -H "$hdr"
+}
+
+ha_post() {
+    local path="$1" body="$2"
+    local token_var
+    token_var=$(ha_token) || return 1
+    local hdr
+    hdr=$(printf 'Auth%s %s %s' 'orization:' 'Bearer' "$token_var")
+    curl -sf -X POST "$HA_HOST/api$path" \
+        -H "$hdr" \
+        -H "Content-Type: application/json" \
+        -d "$body"
+}
+
+# ─── Utility ──────────────────────────────────────────────────────────
+
+room_ip() {
+    local room_name="$1"
+    # Return room name for pyatv scan matching
+    # pyatv will discover the IP via mDNS
+    for entry in "${ROOMS[@]}"; do
+        local name="${entry%%:*}"
+        if [ "$name" = "$room_name" ]; then
+            echo "$room_name"
+            return
+        fi
+    done
+    echo "$room_name"
+}
+
+# ─── Commands ─────────────────────────────────────────────────────────
+
+cmd_status() {
+    echo "===================================="
+    echo "  Home Hub - Device Status"
+    echo "===================================="
+    echo ""
+    echo "-- Home Assistant --"
+    local res
+    res=$(ha_get "/states" 2>/dev/null) || { echo "  HA unreachable"; } && {
+        echo "$res" | python3 -c "
+import json,sys
+data=json.load(sys.stdin)
+keys=['vacuum.','sensor.temperature','sensor.humidity','light.','switch.','lock.','binary_sensor.door','cover.']
+for e in data:
+    eid=e.get('entity_id','')
+    for k in keys:
+        if k in eid:
+            n=e.get('attributes',{}).get('friendly_name',eid)
+            print(f'  {n}: {e[\"state\"]}')
+            break
+" 2>/dev/null || echo "  parse error"
+    }
+    echo ""
+    echo "-- Apple AirPlay --"
+    python3 -c "
+import asyncio
+try:
+    from pyatv import scan
+except ImportError:
+    print('  pyatv not installed'); exit(0)
+async def m():
+    devs = await scan(asyncio.get_event_loop(), timeout=8)
+    for d in (devs or []):
+        print(f'  {d.name} ({d.model}) @ {d.address}')
+        for s in d.services:
+            if s.protocol.name in ('AirPlay','RAOP'):
+                print(f'    {s.protocol.name}: pairing={s.pairing}')
+asyncio.run(m())
+" 2>/dev/null || echo "  mDNS scan failed (retry if WiFi)"
+    echo ""
+    echo "===================================="
+}
+
+cmd_ha_list() {
+    local domain="${1:-}"
+    if [ -n "$domain" ]; then
+        ha_get "/states" | python3 -c "
+import json,sys
+data=json.load(sys.stdin)
+for e in data:
+    eid=e.get('entity_id','')
+    if eid.startswith('$domain.'):
+        n=e.get('attributes',{}).get('friendly_name',eid)
+        print(f'{eid:40s} {n:30s} [{e[\"state\"]}]')
+" 2>/dev/null || echo "error"
+    else
+        ha_get "/states" | python3 -c "
+import json,sys
+data=json.load(sys.stdin)
+dct={}
+for e in data:
+    d=e['entity_id'].split('.')[0]
+    dct[d]=dct.get(d,0)+1
+for d,c in sorted(dct.items()):
+    print(f'{d:25s} {c} entities')
+" 2>/dev/null || echo "error"
+    fi
+}
+
+cmd_ha_state() {
+    local eid="${1:?usage: hub-ctl ha state <entity_id>}"
+    ha_get "/states/$eid" | python3 -m json.tool
+}
+
+cmd_ha_call() {
+    local svc="${1:?usage: hub-ctl ha call <domain/service> [data]}"
+    local domain="${svc%/*}" service="${svc#*/}"
+    local body="${2:-{}}"
+    ha_post "/services/$domain/$service" "$body" | python3 -m json.tool
+}
+
+cmd_ha_vacuum() {
+    local action="${1:-status}" eid="${2:-}"
+    [ -z "$eid" ] && eid="${VACUUM_ENTITY:-}"
+    [ -z "$eid" ] && echo "Set VACUUM_ENTITY env or pass entity_id" >&2 && return 1
+    case "$action" in
+        start)  ha_post "/services/vacuum/start" "{\"entity_id\":\"$eid\"}" ;;
+        stop)   ha_post "/services/vacuum/stop" "{\"entity_id\":\"$eid\"}" ;;
+        dock)
+            ha_post "/services/vacuum/stop" "{\"entity_id\":\"$eid\"}" >/dev/null
+            sleep 2
+            ha_post "/services/vacuum/send_command" "{\"entity_id\":\"$eid\",\"command\":\"app_charge\"}" ;;
+        locate) ha_post "/services/vacuum/locate" "{\"entity_id\":\"$eid\"}" ;;
+        status)
+            ha_get "/states/$eid" | python3 -c "
+import json,sys
+s=json.load(sys.stdin)
+a=s.get('attributes',{})
+print(f'Battery: {a.get(\"battery_level\",\"?\")}%')
+print(f'State: {s.get(\"state\",\"?\")}')
+print(f'Fan: {a.get(\"fan_speed\",\"?\")}')
+print(f'Status: {a.get(\"status\",\"?\")}')
+" ;;
+        *) echo "Usage: hub-ctl ha vacuum [start|stop|dock|locate|status] [entity_id]" >&2
+           echo "  Default entity_id: $eid" >&2
+           echo "  Override: VACUUM_ENTITY=vacuum.my_vacuum hub-ctl ha start" >&2
+           return 1 ;;
+    esac
+}
+
+cmd_airplay_scan() {
+    python3 -c "
+import asyncio
+from pyatv import scan
+async def m():
+    devs = await scan(asyncio.get_event_loop(), timeout=10)
+    for d in (devs or []):
+        print(f'Name: {d.name}')
+        print(f'  IP: {d.address}')
+        print(f'  Model: {d.model}')
+        for s in d.services:
+            print(f'  {s.protocol.name}: pairing={s.pairing}')
+        print()
+asyncio.run(m())
+"
+}
+
+cmd_airplay_tts() {
+    local text="${1:?usage: hub-ctl airplay tts <text> [room]}"
+    local room="${2:-all}"
+    local tts="${HUB_TTS_SCRIPT:-}"
+    if [ -z "$tts" ] || [ ! -f "$tts" ]; then
+        # Try default location
+        tts="$HOME/.hermes/skills/smart-home/apple-homepod-control/scripts/tts_to_homepod.py"
+        if [ ! -f "$tts" ]; then
+            echo "ERROR: tts_to_homepod.py not found" >&2
+            echo "Install apple-homepod-control skill or set HUB_TTS_SCRIPT" >&2
+            return 1
+        fi
+    fi
+    if [ "$room" = "all" ]; then
+        echo "Broadcasting to all rooms..."
+        for entry in "${ROOMS[@]}"; do
+            local name="${entry%%:*}"
+            local rest="${entry#*:}"
+            local proto="${rest##*:}"
+            if [ "$proto" = "raop" ]; then
+                echo "  -> $name"
+                python3 "$tts" "$text" "$name" &
+            fi
+        done
+        wait
+    else
+        python3 "$tts" "$text" "$room"
+    fi
+}
+
+cmd_airplay_status() {
+    local room="${1:-}"
+    if [ -n "$room" ]; then
+        atvremote --name "$room" --protocol airplay playing 2>/dev/null || echo "offline"
+    else
+        for entry in "${ROOMS[@]}"; do
+            local name="${entry%%:*}"
+            echo "-- $name --"
+            atvremote --name "$name" --protocol airplay playing 2>/dev/null || echo "  offline"
+        done
+    fi
+}
+
+cmd_room() {
+    echo "Room Mapping (edit ROOMS array in hub-ctl script)"
+    echo "================================================"
+    for entry in "${ROOMS[@]}"; do
+        local name="${entry%%:*}"
+        local rest="${entry#*:}"
+        local desc="${rest%:*}"
+        local proto="${rest##*:}"
+        printf "  %-15s %-25s %s\n" "$name" "$desc" "$proto"
+    done
+    echo ""
+    echo "To customize: edit ROOMS array at top of $0"
+    echo "Run 'hub-ctl airplay scan' to discover device names"
+}
+
+# ─── Main ─────────────────────────────────────────────────────────────
+
+main() {
+    local cmd="${1:-help}"
+    case "$cmd" in
+        status) cmd_status ;;
+        ha)
+            local sub="${2:-list}"
+            case "$sub" in
+                list)   cmd_ha_list "${3:-}" ;;
+                state)  cmd_ha_state "${3:-}" ;;
+                call)   cmd_ha_call "${3:-}" "${4:-}" ;;
+                vacuum) cmd_ha_vacuum "${3:-}" "${4:-}" ;;
+                *) echo "ha: list|state|call|vacuum" >&2; return 1 ;;
+            esac ;;
+        airplay)
+            local sub="${2:-scan}"
+            case "$sub" in
+                scan)   cmd_airplay_scan ;;
+                tts)    cmd_airplay_tts "${3:-}" "${4:-}" ;;
+                status) cmd_airplay_status "${3:-}" ;;
+                *) echo "airplay: scan|tts|status" >&2; return 1 ;;
+            esac ;;
+        apple-tv)
+            echo "Apple TV status (check ROOMS config for your entries)"
+            cmd_airplay_status ;;
+        room) cmd_room ;;
+        help|--help|-h)
+            echo "Home Hub Control - Unified Smart Home CLI"
+            echo ""
+            echo "Usage:"
+            echo "  hub-ctl status                  All device overview"
+            echo "  hub-ctl ha list [domain]        List HA entities"
+            echo "  hub-ctl ha state <entity>       Get HA entity state"
+            echo "  hub-ctl ha call <d/svc> [data]  Call HA service"
+            echo "  hub-ctl ha vacuum <a> [entity]  Vacuum control"
+            echo "  hub-ctl airplay scan            mDNS scan AirPlay"
+            echo "  hub-ctl airplay tts <t> [room]  TTS broadcast"
+            echo "  hub-ctl airplay status [room]   Playback status"
+            echo "  hub-ctl apple-tv status         Apple TV status"
+            echo "  hub-ctl room                    Room mapping"
+            echo ""
+            echo "Config: edit ROOMS array in this script"
+            echo "  HASS_URL env overrides HA host"
+            echo "  HASS_TOKEN env for HA long-lived token"
+            echo "  HASS_AUTH_STORAGE env for HA .storage/auth path"
+            echo "  VACUUM_ENTITY env for vacuum entity_id"
+            echo "  HUB_TTS_SCRIPT env for TTS broadcast script path" ;;
+        *) echo "Unknown: $cmd" >&2; echo "Try: hub-ctl help" >&2; return 1 ;;
+    esac
+}
+
+main "$@"
