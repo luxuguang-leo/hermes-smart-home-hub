@@ -107,6 +107,10 @@ Camera use cases:
 
 ### Architecture
 
+![Home Hub Architecture](docs/architecture.svg)
+
+*[Open interactive diagram](docs/architecture.html)*
+
 ```
                     ┌──────────────────────┐
                     │      Router/Gateway    │
