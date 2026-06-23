@@ -1,45 +1,45 @@
-# Home Assistant 集成
+# Home Assistant Integration
 
-## 内置工具集
+## Built-in Toolset
 
-Hermes 自带 `homeassistant` 工具集（4 个 LLM 可用工具）：
+Hermes ships with the `homeassistant` toolset (4 LLM-available tools):
 
-| 工具 | 功能 | 参数 |
-|------|------|------|
-| `ha_list_entities` | 列出/筛选设备 | `domain`（可选）, `area`（可选） |
-| `ha_get_state` | 查单个设备详情 | `entity_id`（必填） |
-| `ha_list_services` | 列出可用服务 | — |
-| `ha_call_service` | 调用服务 | `domain`, `service`, `entity_id`, `data` |
+| Tool | Function | Parameters |
+|------|----------|------------|
+| `ha_list_entities` | List / filter entities | `domain` (opt), `area` (opt) |
+| `ha_get_state` | Get a single entity state | `entity_id` (req) |
+| `ha_list_services` | List available services | — |
+| `ha_call_service` | Call a service | `domain`, `service`, `entity_id`, `data` |
 
-### 启用
+### Enable
 
 ```bash
 hermes tools enable homeassistant
 ```
 
-### 配置（.env）
+### Configuration (.env)
 
 ```env
 HASS_URL=http://homeassistant.local:8123
-HASS_TOKEN=<你的长期令牌>
+HASS_TOKEN=<your long-lived token>
 ```
 
-> `/reset` 后生效。
+> Takes effect after `/reset`.
 
-### 生成 Long-Lived Token
+### Generate a Long-Lived Token
 
-HA Web UI → 左下角用户名 → `安全` → `长期访问令牌` → 创建。
+HA Web UI → bottom-left user menu → **Security** → **Long-Lived Access Tokens** → Create.
 
-## REST API（Fallback / 高级操作）
+## REST API (Fallback / Advanced)
 
-当内置工具集未启用或需要 HA 不直接暴露的操作时，直接 curl HA API：
+When the built-in toolset is unavailable or you need direct HA API access:
 
-### Token 管理
+### Token Management
 
-HA access token 30 分钟过期。用 refresh token 换新的：
+HA access tokens expire every 30 minutes. Use a refresh token to renew:
 
 ```bash
-# 从 .storage/auth 取 refresh token
+# Extract refresh token from .storage/auth
 python3 -c "
 import json
 with open('<ha-config-dir>/.storage/auth') as f:
@@ -50,50 +50,46 @@ for t in auth['data']['refresh_tokens']:
         break
 "
 
-# 换 access token
+# Exchange for an access token
 curl -s -X POST http://homeassistant.local:8123/auth/token \
   -H "Content-Type: application/x-www-form-urlencoded" \
   -d "grant_type=refresh_token&client_id=http://homeassistant.local:8123/&refresh_token=TOKEN"
 ```
 
-### 常用 API
+### Common API Calls
 
 ```bash
-# 列出所有设备
-curl -s http://homeassistant.local:8123/api/states -H "Authorization: Bearer <token>"
-
-# vacuum 相关
-curl -s http://homeassistant.local:8123/api/states/vacuum.your_vacuum -H "Authorization: Bearer <token>"
-
-# 调用服务
+# List all entities
+curl -s http://homeassistant.local:8123/api/states -H "Authorization: Bearer *** vacuum state
+curl -s http://homeassistant.local:8123/api/states/vacuum.your_vacuum -H "Authorization: Bearer *** call a service
 curl -s -X POST http://homeassistant.local:8123/api/services/vacuum/start \
-  -H "Authorization: Bearer <token>" -H "Content-Type: application/json" \
+  -H "Authorization: Bearer *** -H "Content-Type: application/json" \
   -d '{"entity_id":"vacuum.your_vacuum"}'
 ```
 
-### 扫地机器人
+### Robot Vacuum
 
 **entity_id:** `vacuum.your_vacuum`
 
-| Service | 作用 | 额外参数 |
-|---------|------|---------|
-| `vacuum/start` | 开始清扫 | — |
-| `vacuum/pause` | 暂停 | — |
-| `vacuum/stop` | 停止 | — |
-| `vacuum/return_to_base` | 回充（可能不触发） | — |
-| `vacuum/send_command` | 自定义命令 | `command: app_charge`（更可靠的回充） |
-| `vacuum/locate` | 发出蜂鸣声 | — |
-| `vacuum/set_fan_speed` | 调吸力 | `fan_speed: turbo` |
+| Service | Action | Extra params |
+|---------|--------|-------------|
+| `vacuum/start` | Start cleaning | — |
+| `vacuum/pause` | Pause | — |
+| `vacuum/stop` | Stop | — |
+| `vacuum/return_to_base` | Return to dock (may not trigger) | — |
+| `vacuum/send_command` | Custom command | `command: app_charge` (more reliable return) |
+| `vacuum/locate` | Beep to locate | — |
+| `vacuum/set_fan_speed` | Set suction power | `fan_speed: turbo` |
 
-吸力等级：`quiet`, `balanced`, `turbo`, `max`, `max_plus`, `smart_mode`
+Fan speed levels: `quiet`, `balanced`, `turbo`, `max`, `max_plus`, `smart_mode`
 
-**回充推荐方法（两步）：**
-1. `vacuum/stop` → 等待 2s
-2. `vacuum/send_command` 带 `{"command": "app_charge"}`
+**Recommended return-to-dock sequence (two steps):**
+1. `vacuum/stop` → wait 2s
+2. `vacuum/send_command` with `{"command": "app_charge"}`
 
-## 已知限制
+## Known Limitations
 
-- **Docker mDNS 不可达** — HA 在 Docker Desktop 中无法发现 Apple 设备。Apple 集成必须在 Mac 宿主机上用 pyatv
-- **HA token 30 分钟过期** — 每次 batch 操作前刷新
-- **本地端口可能闲置时关闭** — 只能走 HA cloud 集成，不能本地直连
-- **部分机型在勿扰时段（22:00-07:00）不接受指令**
+- **Docker mDNS unreachable** — HA inside Docker Desktop cannot discover Apple devices. Apple integration must run on host macOS via pyatv
+- **HA token expires every 30 min** — Refresh before each batch operation
+- **Local port may be closed when idle** — Fall back to HA cloud integration only, no direct local connection
+- **Some devices reject commands during do-not-disturb hours (22:00-07:00)**

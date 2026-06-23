@@ -1,44 +1,44 @@
-# 设备房间映射
+# Device Room Mapping
 
-## 命名约定模板
+## Naming Convention Template
 
-用 `hub-ctl airplay scan` 或 `ha_list_entities` 扫描后，将设备映射到房间：
+After scanning with `hub-ctl airplay scan` or `ha_list_entities`, map your devices to rooms:
 
-| 房间 | 设备 | 位置说明 |
-|------|------|---------|
-| `bedroom` | HomePod mini | 床头柜，用于闹钟/提醒 |
-| `study` | HomePod | 书桌，日常广播 |
-| `living` | AirPort Express + 功放 + 音箱 | 电视柜，最佳音质 |
-| `living` | 智能灯 | 主吊灯 |
-| `front_door` | 智能门锁 | 入户门 |
+| Room | Device | Location Notes |
+|------|--------|----------------|
+| `bedroom` | HomePod mini | Nightstand, for alarms/reminders |
+| `study` | HomePod | Desk, daily broadcasts |
+| `living` | AirPort Express + amp + speakers | TV cabinet, best audio quality |
+| `living` | Smart light | Main ceiling light |
+| `front_door` | Smart lock | Entry door |
 
-## mDNS 发现名称
+## mDNS Discovery Names
 
-> pyatv 返回自动生成的名字，不一定匹配房间位置。
-> 扫描后需手动将 IP 映射到房间。
+> pyatv returns auto-generated names that may not match room locations.
+> After scanning, map IPs to rooms manually.
 
-| 扫描名称模式 | 可能的设备 | 协议 |
-|-------------|-----------|------|
-| 通用名称（如 "Living Room", "Kitchen"） | HomePod / HomePod mini | AirPlay/RAOP |
-| 序列号风格名称（设备 ID 字符串） | Apple TV | AirPlay/Companion |
-| 自定义名称 + "AirPort Express" | AirPort Express | AirPlay/RAOP |
+| Scan Name Pattern | Likely Device | Protocol |
+|-------------------|--------------|----------|
+| Generic name (e.g. "Living Room", "Kitchen") | HomePod / HomePod mini | AirPlay/RAOP |
+| Serial-style name (device ID string) | Apple TV | AirPlay/Companion |
+| Custom name + "AirPort Express" | AirPort Express | AirPlay/RAOP |
 
-## HA entity_id 命名约定
+## HA entity_id Naming Convention
 
-> 实际 entity_id 取决于 HA 集成方式。用 `ha_list_entities` 查看你的设备。
+> Actual entity_ids depend on HA integration. Use `ha_list_entities` to discover yours.
 
-| 设备 | 常见 entity_id 模式 | domain |
-|------|--------------------|--------|
-| 扫地机器人 | `vacuum.robot_vacuum` | vacuum |
-| 扫地机地图 | `image.vacuum_map` | image |
-| 扫地机状态 | `sensor.vacuum_error` | sensor |
-| 客厅灯 | `light.living_room` | light |
-| 温度传感器 | `sensor.temperature_living` | sensor |
-| 湿度传感器 | `sensor.humidity_living` | sensor |
+| Device | Common entity_id pattern | domain |
+|--------|-------------------------|--------|
+| Robot vacuum | `vacuum.robot_vacuum` | vacuum |
+| Vacuum map | `image.vacuum_map` | image |
+| Vacuum status | `sensor.vacuum_error` | sensor |
+| Living room light | `light.living_room` | light |
+| Temperature sensor | `sensor.temperature_living` | sensor |
+| Humidity sensor | `sensor.humidity_living` | sensor |
 
-## 房间名参考
+## Room Name Reference
 
-自定义命名，常见示例：
+Choose your own naming scheme. Common examples:
 
 ```
 bedroom, study, living, kitchen, dining, hallway, bathroom, storage
