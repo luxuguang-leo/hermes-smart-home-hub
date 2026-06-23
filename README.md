@@ -111,135 +111,23 @@ Camera use cases:
 
 > **Tip:** All CRON examples require the Hermes cron system. See [Hermes Docs → Cron](https://hermes-agent.nousresearch.com/docs/features/scheduled-tasks) for detailed configuration.
 
-### Installation (from scratch)
+### Installation (one-click)
 
-A complete walkthrough for setting up Home Hub on a fresh macOS system.
-
-#### 1. System Dependencies
+Run the installer script on a fresh macOS to go from zero to running:
 
 ```bash
-# Install Homebrew (if not already installed)
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-
-# Install core dependencies
-brew install ffmpeg python@3.12
-
-# Install Python packages
-pip3 install pyatv
-
-# Verify
-python3 -c "import pyatv; print(f'pyatv {pyatv.__version__}')"
-```
-
-#### 2. Install Docker
-
-Download and install [Docker Desktop for Mac](https://www.docker.com/products/docker-desktop/), then verify:
-
-```bash
-docker --version
-docker compose version
-```
-
-> **Note for Apple Silicon (M1/M2/M3):** Docker Desktop runs Intel images via Rosetta 2. Home Assistant publishes `arm64` images — use `homeassistant/home-assistant:stable` directly (no platform flag needed).
-
-#### 3. Deploy Home Assistant
-
-Create a directory structure and `docker-compose.yml`:
-
-```bash
-mkdir -p ~/homeassistant/config
-cd ~/homeassistant
-```
-
-Create `docker-compose.yml`:
-
-```yaml
-version: '3.8'
-services:
-  homeassistant:
-    image: homeassistant/home-assistant:stable
-    container_name: homeassistant
-    restart: unless-stopped
-    network_mode: host
-    volumes:
-      - ./config:/config
-      - /etc/localtime:/etc/localtime:ro
-    environment:
-      - TZ=Asia/Shanghai  # Change to your timezone
-```
-
-> **Why `network_mode: host`?** Home Assistant needs to discover devices on your LAN (Philips Hue, Bluetooth sensors, etc.). Bridge/NAT mode isolates the container and breaks discovery. Host mode shares the host network stack directly.
-
-Start Home Assistant:
-
-```bash
-docker compose up -d
-# Wait ~2 min for first boot, then visit http://localhost:8123
-docker compose logs -f --tail=50  # Watch boot progress
-```
-
-#### 4. Initialize Home Assistant
-
-1. Open **http://localhost:8123** in your browser
-2. Create an admin account (name, username, password)
-3. Set your home location on the map (for weather/automation)
-4. Name your home (e.g. "Home")
-5. Optional: Integrate devices — discover on LAN, or add integrations later
-
-Generate a **Long-Lived Access Token** for hub-ctl:
-- HA Web UI → bottom-left user menu → **Security**
-- Scroll to **Long-Lived Access Tokens** → **Create Token**
-- Name it (e.g. "home-hub") → Copy the token string immediately (it won't be shown again)
-
-#### 5. Set Up Home Hub
-
-```bash
-# Clone the repo
 git clone https://github.com/luxuguang-leo/hermes-smart-home-hub.git
 cd hermes-smart-home-hub
-
-# Configure environment
-cp .env.example .env
-# Edit .env:
-#   HASS_URL=http://localhost:8123
-#   HASS_TOKEN=<the-token-from-step-4>
+bash scripts/install.sh
 ```
 
-Discover and map AirPlay devices:
+**What it does:**
+- Installs Homebrew, ffmpeg, Python, pyatv, and Docker Desktop
+- Deploys Home Assistant via docker-compose
+- Guides you through HA init + token generation
+- Configures `.env` and prints verification commands
 
-```bash
-bash scripts/hub-ctl airplay scan
-# Output lists discovered HomePods, Apple TVs, and AirPort Express devices
-# Edit the ROOMS array at the top of scripts/hub-ctl with your device IDs
-```
-
-Verify everything is connected:
-
-```bash
-bash scripts/hub-ctl status
-# Should show: HA connected ✓, AirPlay devices found, room mapping OK
-```
-
-#### 6. (Optional) Enable Hermes Integration
-
-If you use [Hermes Agent](https://hermes-agent.nousresearch.com):
-
-```bash
-# Mount the skill directory (two options):
-
-# Option A — Symlink into ~/.hermes/skills/
-ln -sf "$(pwd)/SKILL.md" ~/.hermes/skills/home-hub/SKILL.md
-
-# Option B — Use external_dirs in ~/.hermes/config.yaml
-# skills:
-#   external_dirs:
-#     - /path/to/hermes-smart-home-hub
-
-# Enable the Home Assistant toolset
-hermes tools enable homeassistant
-```
-
-Now Hermes can control your smart home using natural language. See **Quick Start** below for usage examples.
+> **Requires:** An Intel or Apple Silicon Mac with internet access. Docker Desktop will prompt for GUI installation steps. HA initialization (account creation, location setup) is done via browser — the script waits for you.
 
 ### Quick Start
 
@@ -442,135 +330,23 @@ hermes cron create --name "camera-watch" --schedule "*/15 9-18 * * *" \
 - **宠物监控**：随时随地语音查客厅摄像头
 - **夜间安防**：睡前 CRON 汇总当天所有摄像头动态
 
-### 安装指南（从零开始）
+### 一键安装
 
-在全新 macOS 系统上搭建 Home Hub 的完整流程。
-
-#### 1. 系统依赖
+在全新 macOS 上运行安装脚本，一键完成所有搭建：
 
 ```bash
-# 安装 Homebrew（如果没有）
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-
-# 安装核心依赖
-brew install ffmpeg python@3.12
-
-# 安装 Python 包
-pip3 install pyatv
-
-# 验证
-python3 -c "import pyatv; print(f'pyatv {pyatv.__version__}')"
-```
-
-#### 2. 安装 Docker
-
-下载安装 [Docker Desktop for Mac](https://www.docker.com/products/docker-desktop/)，然后验证：
-
-```bash
-docker --version
-docker compose version
-```
-
-> **Apple Silicon (M1/M2/M3) 注意：** Home Assistant 有原生 `arm64` 镜像，直接用 `homeassistant/home-assistant:stable` 即可，无需加 platform 参数。
-
-#### 3. 部署 Home Assistant
-
-创建目录和 `docker-compose.yml`：
-
-```bash
-mkdir -p ~/homeassistant/config
-cd ~/homeassistant
-```
-
-创建 `docker-compose.yml`：
-
-```yaml
-version: '3.8'
-services:
-  homeassistant:
-    image: homeassistant/home-assistant:stable
-    container_name: homeassistant
-    restart: unless-stopped
-    network_mode: host
-    volumes:
-      - ./config:/config
-      - /etc/localtime:/etc/localtime:ro
-    environment:
-      - TZ=Asia/Shanghai  # 改为你的时区
-```
-
-> **为什么用 `network_mode: host`？** HA 需要在局域网发现设备（Philips Hue、蓝牙传感器等），bridge 模式会隔离网络导致无法发现。host 模式让容器复用宿主机网络栈。
-
-启动 Home Assistant：
-
-```bash
-docker compose up -d
-# 等约 2 分钟启动，然后访问 http://localhost:8123
-docker compose logs -f --tail=50  # 查看启动日志
-```
-
-#### 4. 初始化 Home Assistant
-
-1. 浏览器打开 **http://localhost:8123**
-2. 创建管理员账号（姓名、用户名、密码）
-3. 在地图上设置家的位置（用于天气和自动化）
-4. 给家取个名字（如"我的家"）
-5. 可选：发现局域网设备或稍后添加集成
-
-生成 **长期访问令牌** 给 hub-ctl：
-- HA Web UI → 左下角用户菜单 → **安全**
-- 滚动到 **长期访问令牌** → **创建令牌**
-- 命名（如"home-hub"）→ **立即复制**令牌字符串（关闭后不再显示）
-
-#### 5. 配置 Home Hub
-
-```bash
-# 克隆仓库
 git clone https://github.com/luxuguang-leo/hermes-smart-home-hub.git
 cd hermes-smart-home-hub
-
-# 配置环境变量
-cp .env.example .env
-# 编辑 .env：
-#   HASS_URL=http://localhost:8123
-#   HASS_TOKEN=<上一步生成的令牌>
+bash scripts/install.sh
 ```
 
-发现并映射 AirPlay 设备：
+**脚本帮你完成：**
+- 安装 Homebrew、ffmpeg、Python、pyatv、Docker Desktop
+- 用 docker-compose 部署 Home Assistant
+- 引导你完成 HA 初始化 + token 生成
+- 配置 `.env` 并打印验证命令
 
-```bash
-bash scripts/hub-ctl airplay scan
-# 输出会列出家里的 HomePod、Apple TV、AirPort Express
-# 然后编辑 scripts/hub-ctl 顶部的 ROOMS 数组，填入设备 ID
-```
-
-验证一切就绪：
-
-```bash
-bash scripts/hub-ctl status
-# 应显示：HA 连接 ✓、AirPlay 设备已发现、房间映射正常
-```
-
-#### 6. （可选）集成 Hermes Agent
-
-如果使用 [Hermes Agent](https://hermes-agent.nousresearch.com)：
-
-```bash
-# 挂载 skill 目录（二选一）：
-
-# 方案 A — 软链到 ~/.hermes/skills/
-ln -sf "$(pwd)/SKILL.md" ~/.hermes/skills/home-hub/SKILL.md
-
-# 方案 B — 在 ~/.hermes/config.yaml 中使用 external_dirs
-# skills:
-#   external_dirs:
-#     - /path/to/hermes-smart-home-hub
-
-# 启用 Home Assistant 工具集
-hermes tools enable homeassistant
-```
-
-配置完成后，Hermes 即可用自然语言控制你的智能家居。下面是一些快速上手的命令示例。
+> **要求：** Intel 或 Apple Silicon Mac，可联网。Docker Desktop 安装过程需 GUI 交互。HA 初始化（账号创建、位置设置）在浏览器中完成——脚本会等你操作。
 
 ### 快速开始
 
